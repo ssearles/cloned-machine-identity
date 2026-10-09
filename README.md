@@ -51,6 +51,33 @@ survives an otherwise successful restore.
 | `systemd-machine-id-setup` on an existing file | Exits 0, changes nothing, ID stays duplicated |
 | `journalctl --vacuum-time=1s` | Not selective — discards the current machine's logs too |
 | Assuming a fresh USB install is a clone | Nothing was inherited; nothing to fix |
+| Skipping the vacuum to preserve logs | Does not work — the machine-id change discards them anyway |
+
+### The journal clears itself
+
+Regenerating the machine-id discards the inherited journal as a side effect.
+No vacuum, no `journalctl` flags. systemd keys journal storage by machine-id,
+so entries written under the previous ID stop being addressable and are
+dropped on the next boot.
+
+Measured on the same HP Pavilion 15, with the vacuum deliberately not run
+`[PROVEN]`:
+
+    before:  85,006 entries, oldest 2026-10-01, logged as lenovot440p
+    after:    2,171 entries, every one from the current boot
+
+This reframes the vacuum step. `journalctl --vacuum-time=1s` deletes by
+timestamp across everything on disk, which is why it is not selective about
+which machine wrote the entries. But by the time step 3 runs, step 1 has
+already changed the machine-id and the inherited entries are gone anyway — so
+the vacuum is belt-and-braces rather than the mechanism.
+
+Two practical consequences:
+
+- Expect to lose pre-restore logs either way. Skipping the vacuum does not
+  preserve them, and that is worth knowing before treating a backup as intact.
+- Step order does not affect the journal outcome. The hostname step is the
+  only one that is genuinely selective about what it alters.
 
 ## Installation
 
