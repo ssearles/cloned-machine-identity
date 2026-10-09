@@ -28,9 +28,27 @@ echo
 # 1. Fresh machine-id. Must be removed (or truncated) before setup will regenerate.
 #    Skipping this is the whole point: identical IDs across two live machines cause
 #    DHCP lease collisions and make log aggregation ambiguous.
+#
+#    The removal is destructive and happens first, so regeneration is treated as
+#    fallible rather than assumed. If the systemd tool fails, fall back to the
+#    kernel UUID source, then assert the file is non-empty. Without these two
+#    checks a failed regeneration leaves the machine with NO machine-id at all,
+#    which is worse than the duplicate we started with -- and because the ID is
+#    already gone, the original cannot be recovered from this script's state.
 echo "==> Regenerating machine-id"
 rm -f /etc/machine-id
-systemd-machine-id-setup
+if ! systemd-machine-id-setup; then
+	echo "    systemd-machine-id-setup failed, using /proc fallback" >&2
+	cat /proc/sys/kernel/random/uuid | tr -d '-' > /etc/machine-id
+fi
+if [[ ! -s /etc/machine-id ]]; then
+	echo "ERROR: machine-id was removed but not regenerated." >&2
+	echo "       Recover with:" >&2
+	echo "         cat /proc/sys/kernel/random/uuid | tr -d '-' | sudo tee /etc/machine-id" >&2
+	echo "         sudo chmod 444 /etc/machine-id" >&2
+	exit 1
+fi
+chmod 444 /etc/machine-id
 echo "    new machine-id: $(cat /etc/machine-id)"
 
 # 2. Correct hostname. Appears in prompts, mDNS/Avahi, DHCP leases, logs.
